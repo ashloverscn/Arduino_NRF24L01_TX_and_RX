@@ -4,7 +4,7 @@
 #include <RF24.h>
 
 // ############ Wiring ################
-#define PPM_pin   2  // PPM in
+//#define PPM_pin   2  // PPM in
 //SPI Comm.pins with nRF24L01
 //#define MOSI_pin  11  // MOSI - D3
 //#define SCK_pin   13  // SCK  - D4
