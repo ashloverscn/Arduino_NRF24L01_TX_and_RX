@@ -33,27 +33,50 @@
 
 // ############ Wiring ################
 #define PPM_pin   2  // PPM in
+
 //SPI Comm.pins with nRF24L01
-#define MOSI_pin  3  // MOSI - D3
-#define SCK_pin   4  // SCK  - D4
 #define CE_pin    5  // CE   - D5
-#define MISO_pin  A0 // MISO - A0
 #define CS_pin    A1 // CS   - A1
+#define SCK_pin   4  // SCK  - D4
+#define MOSI_pin  3  // MOSI - D3
+#define MISO_pin  A0 // MISO - A0
 
 #define ledPin    13 // LED  - D13
+/*
+//SPI Comm.pins with nRF24L01
+#define CE_pin    9 
+#define CS_pin    10  
+#define SCK_pin   13
+#define MOSI_pin  11  
+#define MISO_pin  12 
+
+#define ledPin    8 // RXLED  - D8
+*/
 
 // SPI outputs
-#define MOSI_on PORTD |= _BV(3)  // PD3
-#define MOSI_off PORTD &= ~_BV(3)// PD3
-#define SCK_on PORTD |= _BV(4)   // PD4
-#define SCK_off PORTD &= ~_BV(4) // PD4
 #define CE_on PORTD |= _BV(5)    // PD5
 #define CE_off PORTD &= ~_BV(5)  // PD5
 #define CS_on PORTC |= _BV(1)    // PC1
 #define CS_off PORTC &= ~_BV(1)  // PC1
+#define SCK_on PORTD |= _BV(4)   // PD4
+#define SCK_off PORTD &= ~_BV(4) // PD4
+#define MOSI_on PORTD |= _BV(3)  // PD3
+#define MOSI_off PORTD &= ~_BV(3)// PD3
 // SPI input
 #define  MISO_on (PINC & _BV(0)) // PC0
-
+/*
+// SPI outputs
+#define CE_on PORTB |= _BV(1)   
+#define CE_off PORTB &= ~_BV(1) 
+#define CS_on PORTB |= _BV(2)   
+#define CS_off PORTB &= ~_BV(2) 
+#define SCK_on PORTB |= _BV(5)   
+#define SCK_off PORTB &= ~_BV(5) 
+#define MOSI_on PORTB |= _BV(3)  
+#define MOSI_off PORTB &= ~_BV(3)
+// SPI input
+#define  MISO_on (PINB & _BV(4)) 
+*/
 #define RF_POWER TX_POWER_158mW 
 //TX_POWER_5mW  80 20 158
 
@@ -139,10 +162,10 @@ void setup()
     pinMode(ledPin, OUTPUT);
     digitalWrite(ledPin, LOW); //start LED off
     pinMode(PPM_pin, INPUT);
-    pinMode(MOSI_pin, OUTPUT);
-    pinMode(SCK_pin, OUTPUT);
-    pinMode(CS_pin, OUTPUT);
     pinMode(CE_pin, OUTPUT);
+    pinMode(CS_pin, OUTPUT);
+    pinMode(SCK_pin, OUTPUT);
+    pinMode(MOSI_pin, OUTPUT);
     pinMode(MISO_pin, INPUT);
     frskyInit();
     
