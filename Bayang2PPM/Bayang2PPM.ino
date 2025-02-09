@@ -20,21 +20,21 @@
 // ############ Wiring ################
 //SPI Comm.pins with nRF24L01
 //IF you change pin numbers you'll need to adjust SPI outputs too
-#define MOSI_pin  11  
+#define CE_pin    9 
+#define CS_pin    10  
 #define SCK_pin   13
-#define CE_pin    10  
+#define MOSI_pin  11  
 #define MISO_pin  12 
-#define CS_pin    9 
 
 // SPI outputs
-#define MOSI_on PORTB |= _BV(3)  
-#define MOSI_off PORTB &= ~_BV(3)
+#define CE_on PORTB |= _BV(1)   
+#define CE_off PORTB &= ~_BV(1) 
+#define CS_on PORTB |= _BV(2)   
+#define CS_off PORTB &= ~_BV(2) 
 #define SCK_on PORTB |= _BV(5)   
 #define SCK_off PORTB &= ~_BV(5) 
-#define CE_on PORTB |= _BV(2)   
-#define CE_off PORTB &= ~_BV(2) 
-#define CS_on PORTB |= _BV(1)   
-#define CS_off PORTB &= ~_BV(1) 
+#define MOSI_on PORTB |= _BV(3)  
+#define MOSI_off PORTB &= ~_BV(3)
 // SPI input
 #define  MISO_on (PINB & _BV(4)) 
 
@@ -67,10 +67,10 @@ MyData tmp;
 
 void setup()
 {
-    pinMode(MOSI_pin, OUTPUT);
-    pinMode(SCK_pin, OUTPUT);
-    pinMode(CS_pin, OUTPUT);
     pinMode(CE_pin, OUTPUT);
+    pinMode(CS_pin, OUTPUT);
+    pinMode(SCK_pin, OUTPUT);
+    pinMode(MOSI_pin, OUTPUT);
     pinMode(MISO_pin, INPUT);
 
 #ifdef DEBUG
