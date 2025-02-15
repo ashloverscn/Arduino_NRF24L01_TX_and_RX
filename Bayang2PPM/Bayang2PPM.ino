@@ -51,7 +51,7 @@
 //TODO: transmitter ID is not really used
 uint8_t transmitterID[4];
 uint8_t packet[32];
-static uint8_t emptyPacketsCount = 160;
+static uint8_t emptyPacketsCount = 260;
 int ppm[channel_number];
 struct MyData {
   uint16_t throttle;
@@ -94,10 +94,10 @@ void loop()
     Bayang_recv_packet(&tmp);
     if (tmp.throttle==0 && tmp.yaw==0 && tmp.pitch==0 && tmp.roll==0) {
       emptyPacketsCount++;
-      if (emptyPacketsCount >= 160) {
+      if (emptyPacketsCount >= 260) {
         // signal lost?
         resetData(); //set invalid values so that fc can enter fail safe
-        emptyPacketsCount = 160;
+        emptyPacketsCount = 260;
       }
     }
     else {
