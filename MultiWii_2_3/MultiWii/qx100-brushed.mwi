@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
 <properties>
-<comment>Tue Mar 11 02:37:14 IST 2025</comment>
-<entry key="pid.3.d">24.0</entry>
+<comment>Fri Feb 28 02:16:15 IST 2025</comment>
 <entry key="power.trigger">0</entry>
+<entry key="pid.3.d">24.0</entry>
 <entry key="pid.2.i">0.0</entry>
 <entry key="pid.1.p">1.9</entry>
 <entry key="rc.yaw.rate">0.0</entry>
