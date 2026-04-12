@@ -65,6 +65,8 @@ struct MyData {
 MyData data;
 MyData tmp;
 
+unsigned long lastDebugTime = 0; 
+
 void setup()
 {
     pinMode(CE_pin, OUTPUT);
@@ -104,6 +106,18 @@ void loop()
       data = tmp;
       emptyPacketsCount = 0;
       setPPMValuesFromData();
+
+#ifdef DEBUG
+      if (millis() - lastDebugTime > 100) {
+        Serial.print("CH1:"); Serial.print(ppm[0]); Serial.print("\t");
+        Serial.print("CH2:"); Serial.print(ppm[1]); Serial.print("\t");
+        Serial.print("CH3:"); Serial.print(ppm[2]); Serial.print("\t");
+        Serial.print("CH4:"); Serial.print(ppm[3]); Serial.print("\t");
+        Serial.print("CH5:"); Serial.print(ppm[4]); Serial.print("\t");
+        Serial.print("CH6:"); Serial.println(ppm[5]);
+        lastDebugTime = millis();
+      }
+#endif
     }
 }
 
@@ -180,4 +194,3 @@ ISR(TIMER1_COMPA_vect){
     }     
   }
 }
-
