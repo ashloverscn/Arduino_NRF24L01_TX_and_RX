@@ -2,78 +2,89 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
-// --- CONFIGURATION ---
-#define DEBUG_MODE 1  // Set to 1 for Terminal output, 0 for flight
 #define PPM_IN_PIN 2
 #define CHANNELS 6
+#define HOP_COUNT 16
 
 RF24 radio(9, 10);
 
-// Global State
-volatile uint16_t ppmValues[CHANNELS] = {1500, 1500, 1500, 1500, 1500, 1500};
+struct Payload {
+  uint16_t ch[CHANNELS];
+  uint32_t txID;
+  uint8_t hopIdx;
+};
+
+Payload data;
+volatile uint16_t ppmIn[CHANNELS];
 volatile unsigned long lastMicros = 0;
-volatile byte currentChannel = 0;
+volatile byte pulseIdx = 0;
 
-const byte BIND_PIPE[6] = "BND01";
-const byte DATA_PIPE[6] = "DAT01";
-uint8_t pnTable[] = {22, 44, 66, 88, 33, 55}; // PN Hopping Table
-uint8_t pnIndex = 0;
+// Unique TX ID (Change this for different transmitters)
+uint32_t transmitterID = 0xDEADBEEF; 
+uint8_t hopTable[HOP_COUNT];
+uint8_t currentHop = 0;
 
-// Interrupt: Measure PPM Input
 void readPPM() {
   unsigned long now = micros();
   unsigned long diff = now - lastMicros;
   lastMicros = now;
+  if (diff > 3000) pulseIdx = 0;
+  else if (pulseIdx < CHANNELS) {
+    ppmIn[pulseIdx] = diff;
+    pulseIdx++;
+  }
+}
 
-  if (diff > 3000) { 
-    currentChannel = 0; // Sync Gap
-  } else if (currentChannel < CHANNELS) {
-    ppmValues[currentChannel] = diff;
-    currentChannel++;
+void generateHopTable(uint32_t seed) {
+  randomSeed(seed);
+  for (int i = 0; i < HOP_COUNT; i++) {
+    hopTable[i] = random(2, 124); // Spread across full 2.4GHz band
   }
 }
 
 void setup() {
-  if (DEBUG_MODE) {
-    Serial.begin(115200);
-    Serial.println(F("TX Init... Waiting for RX"));
-  }
-
+  Serial.begin(115200);
   pinMode(PPM_IN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(PPM_IN_PIN), readPPM, RISING);
 
   radio.begin();
-  radio.setPALevel(RF24_PA_LOW);
-  radio.setRetries(15, 15);
+  radio.setDataRate(RF24_250KBPS); // Max sensitivity
+  radio.setPALevel(RF24_PA_MAX);
+  radio.setAutoAck(false);        // AFHDS style: don't wait for ACKs during flight
   
-  // Binding Handshake
-  radio.openWritingPipe(BIND_PIPE);
+  generateHopTable(transmitterID);
+  
+  // Binding
   radio.setChannel(100);
-  while (!radio.write("BIND", 4)) { delay(200); }
+  radio.openWritingPipe(0xE8E8F0F0E1LL);
+  Serial.println(F("Binding..."));
+  
+  unsigned long bindTimer = millis();
+  while (millis() - bindTimer < 5000) { // Send ID for 5 seconds
+    if (radio.write(&transmitterID, sizeof(transmitterID))) break;
+    delay(10);
+  }
 
-  if (DEBUG_MODE) Serial.println(F("Bound! Starting FHSS PPM Transmission."));
-
-  radio.openWritingPipe(DATA_PIPE);
-  radio.setRetries(0, 0); // Strict timing
   radio.stopListening();
+  Serial.println(F("Link Active"));
 }
 
 void loop() {
-  radio.setChannel(pnTable[pnIndex]);
-
-  uint16_t packet[CHANNELS];
-  noInterrupts(); // Atomic copy
-  for (byte i = 0; i < CHANNELS; i++) packet[i] = ppmValues[i];
+  unsigned long startHop = micros();
+  
+  radio.setChannel(hopTable[currentHop]);
+  
+  noInterrupts();
+  for(int i=0; i<CHANNELS; i++) data.ch[i] = ppmIn[i];
   interrupts();
+  
+  data.txID = transmitterID;
+  data.hopIdx = currentHop;
 
-  bool ok = radio.write(&packet, sizeof(packet));
+  radio.startWrite(&data, sizeof(data), true); // Multicast mode (no ack)
 
-  if (DEBUG_MODE) {
-    Serial.print(F("Ch:")); Serial.print(pnTable[pnIndex]);
-    Serial.print(F(" [1]:")); Serial.print(packet[0]);
-    Serial.println(ok ? F(" OK") : F(" FAIL"));
-  }
-
-  pnIndex = (pnIndex + 1) % 6;
-  delay(20); // 50Hz Link Rate
+  currentHop = (currentHop + 1) % HOP_COUNT;
+  
+  // Strict 10ms timing (100Hz Refresh)
+  while (micros() - startHop < 10000); 
 }
