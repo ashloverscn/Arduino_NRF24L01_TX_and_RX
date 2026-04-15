@@ -2,49 +2,78 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
+// --- CONFIGURATION ---
+#define DEBUG_MODE 1  // Set to 1 for Terminal output, 0 for flight
+#define PPM_IN_PIN 2
+#define CHANNELS 6
+
 RF24 radio(9, 10);
-const byte BIND_PIPE[6] = "BIND1";
-const byte DATA_PIPE[6] = "DATA1";
-bool isBound = false;
+
+// Global State
+volatile uint16_t ppmValues[CHANNELS] = {1500, 1500, 1500, 1500, 1500, 1500};
+volatile unsigned long lastMicros = 0;
+volatile byte currentChannel = 0;
+
+const byte BIND_PIPE[6] = "BND01";
+const byte DATA_PIPE[6] = "DAT01";
+uint8_t pnTable[] = {22, 44, 66, 88, 33, 55}; // PN Hopping Table
+uint8_t pnIndex = 0;
+
+// Interrupt: Measure PPM Input
+void readPPM() {
+  unsigned long now = micros();
+  unsigned long diff = now - lastMicros;
+  lastMicros = now;
+
+  if (diff > 3000) { 
+    currentChannel = 0; // Sync Gap
+  } else if (currentChannel < CHANNELS) {
+    ppmValues[currentChannel] = diff;
+    currentChannel++;
+  }
+}
 
 void setup() {
-  Serial.begin(115200);
-  radio.begin();
-  radio.setPALevel(RF24_PA_LOW);
-  radio.setRetries(15, 15); // Maximum retries for binding
-  
-  // Phase 1: Binding
-  radio.openWritingPipe(BIND_PIPE);
-  radio.setChannel(100); // Use a quiet channel
-  
-  Serial.println(F("TX: Attempting to Bind..."));
-
-  while (!isBound) {
-    const char msg[] = "BIND_REQ";
-    if (radio.write(&msg, sizeof(msg))) {
-      isBound = true;
-      Serial.println(F("TX: RX found! Starting FHSS in 1 second..."));
-    }
-    delay(250); // Don't flood the bus too fast
+  if (DEBUG_MODE) {
+    Serial.begin(115200);
+    Serial.println(F("TX Init... Waiting for RX"));
   }
 
-  delay(1000); // Let RX settle
+  pinMode(PPM_IN_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PPM_IN_PIN), readPPM, RISING);
+
+  radio.begin();
+  radio.setPALevel(RF24_PA_LOW);
+  radio.setRetries(15, 15);
+  
+  // Binding Handshake
+  radio.openWritingPipe(BIND_PIPE);
+  radio.setChannel(100);
+  while (!radio.write("BIND", 4)) { delay(200); }
+
+  if (DEBUG_MODE) Serial.println(F("Bound! Starting FHSS PPM Transmission."));
+
   radio.openWritingPipe(DATA_PIPE);
-  radio.setRetries(0, 0); // Disable for FHSS
+  radio.setRetries(0, 0); // Strict timing
   radio.stopListening();
 }
 
 void loop() {
-  // FHSS Hopping Table
-  static uint8_t pnTable[] = {20, 40, 60, 80};
-  static uint8_t i = 0;
+  radio.setChannel(pnTable[pnIndex]);
 
-  radio.setChannel(pnTable[i]);
-  const char text[] = "Hello World";
-  radio.write(&text, sizeof(text));
-  
-  Serial.print(F("Sent Hello on Ch: ")); Serial.println(pnTable[i]);
-  
-  i = (i + 1) % 4;
-  delay(200); // Slower 5Hz hop for stability
+  uint16_t packet[CHANNELS];
+  noInterrupts(); // Atomic copy
+  for (byte i = 0; i < CHANNELS; i++) packet[i] = ppmValues[i];
+  interrupts();
+
+  bool ok = radio.write(&packet, sizeof(packet));
+
+  if (DEBUG_MODE) {
+    Serial.print(F("Ch:")); Serial.print(pnTable[pnIndex]);
+    Serial.print(F(" [1]:")); Serial.print(packet[0]);
+    Serial.println(ok ? F(" OK") : F(" FAIL"));
+  }
+
+  pnIndex = (pnIndex + 1) % 6;
+  delay(20); // 50Hz Link Rate
 }
