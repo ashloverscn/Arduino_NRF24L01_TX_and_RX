@@ -2,7 +2,6 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
-// --- CONFIGURATION ---
 #define SIG_PIN 2
 #define CHANNELS 6
 #define FRAME_LEN 22500
@@ -14,51 +13,44 @@ volatile uint16_t ppmOut[CHANNELS] = {1500, 1500, 1500, 1500, 1500, 1500};
 const byte BIND_PIPE[6] = "BND01";
 const byte DATA_PIPE[6] = "DAT01";
 uint8_t pnTable[] = {22, 44, 66, 88, 33, 55};
-uint8_t pnIndex = 0;
+uint8_t pnIdx = 0;
 bool isBound = false;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println(F("--- RX 6-CH DEBUG START ---"));
-
-  if (!radio.begin()) {
-    Serial.println(F("Radio Hardware Not Found!"));
-    while (1);
-  }
-
+  radio.begin();
   radio.setPALevel(RF24_PA_LOW);
   
-  // Bind Mode
+  // PHASE 1: BINDING
   radio.setChannel(100);
   radio.openReadingPipe(1, BIND_PIPE);
   radio.startListening();
 
-  Serial.println(F("Waiting for Bind..."));
   while (!isBound) {
     if (radio.available()) {
-      char msg[32] = "";
+      char msg[32];
       radio.read(&msg, sizeof(msg));
       isBound = true;
     }
   }
 
-  Serial.println(F("Bound! Monitoring 6 Channels:"));
+  // PHASE 2: OPERATION
   radio.stopListening();
   radio.openReadingPipe(1, DATA_PIPE);
   radio.startListening();
 
-  // Timer1: High-Precision PPM Generator
+  // Setup Timer1 for PPM Output
   pinMode(SIG_PIN, OUTPUT);
   cli();
   TCCR1A = 0; TCCR1B = 0;
-  TCCR1B |= (1 << WGM12) | (1 << CS11); // CTC mode, Prescaler 8
+  TCCR1B |= (1 << WGM12) | (1 << CS11); // CTC Mode, Prescaler 8
   TIMSK1 |= (1 << OCIE1A);
-  OCR1A = 1000; 
+  OCR1A = 1000;
   sei();
 }
 
 void loop() {
-  radio.setChannel(pnTable[pnIndex]);
+  radio.setChannel(pnTable[pnIdx]);
   
   unsigned long startWait = millis();
   bool received = false;
@@ -67,53 +59,44 @@ void loop() {
     if (radio.available()) {
       uint16_t incoming[CHANNELS];
       radio.read(&incoming, sizeof(incoming));
-      
-      // Update PPM values
-      for (byte i = 0; i < CHANNELS; i++) {
-        ppmOut[i] = incoming[i];
-      }
+      for (byte i = 0; i < CHANNELS; i++) ppmOut[i] = incoming[i];
       received = true;
       break;
     }
   }
 
-  // --- 6 CHANNEL DEBUG OUTPUT ---
+  // --- CLEAN DATA OUTPUT ---
   if (received) {
-    Serial.print(F("CHs ["));
     for (byte i = 0; i < CHANNELS; i++) {
       Serial.print(ppmOut[i]);
-      if (i < CHANNELS - 1) Serial.print(F(", "));
+      if (i < CHANNELS - 1) Serial.print(F(","));
     }
-    Serial.print(F("] Hop:")); 
-    Serial.println(pnTable[pnIndex]);
-  } else {
-    Serial.print(F("MISSING PACKET on Ch: "));
-    Serial.println(pnTable[pnIndex]);
+    Serial.println();
   }
 
-  pnIndex = (pnIndex + 1) % 6;
+  pnIdx = (pnIdx + 1) % 6;
 }
 
-// ISR: Fixed Pulse Generation (CTC Mode)
+// Timer1 ISR for Clean PPM Signal
 ISR(TIMER1_COMPA_vect) {
   static boolean state = true;
   if (state) {
     digitalWrite(SIG_PIN, LOW);
-    OCR1A = PULSE_LEN * 2; 
+    OCR1A = PULSE_LEN * 2;
     state = false;
   } else {
-    static byte cur_chan;
-    static unsigned int calc_rest;
+    static byte c;
+    static unsigned int r;
     digitalWrite(SIG_PIN, HIGH);
     state = true;
-    if (cur_chan >= CHANNELS) {
-      cur_chan = 0;
-      OCR1A = (FRAME_LEN - calc_rest) * 2;
-      calc_rest = 0;
+    if (c >= CHANNELS) {
+      c = 0;
+      OCR1A = (FRAME_LEN - r) * 2;
+      r = 0;
     } else {
-      OCR1A = (ppmOut[cur_chan] - PULSE_LEN) * 2;
-      calc_rest += ppmOut[cur_chan];
-      cur_chan++;
+      OCR1A = (ppmOut[c] - PULSE_LEN) * 2;
+      r += ppmOut[c];
+      c++;
     }
   }
 }
