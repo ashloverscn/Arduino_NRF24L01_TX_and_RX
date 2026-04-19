@@ -2,10 +2,10 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
-RF24 radio(9, 10);
+RF24 radio(9, 10); // CE, CSN
 
 // ===== CONFIG =====
-#define PPM_PIN 3
+#define PPM_PIN 2
 #define CHANNELS 6
 #define PACKET_SIZE 15
 
@@ -15,18 +15,16 @@ uint8_t hop_table[4];
 uint8_t hop_index = 0;
 
 uint16_t channels[CHANNELS];
-uint32_t lastPacketTime = 0;
+volatile uint16_t ppm[CHANNELS];
 
+uint32_t lastPacketTime = 0;
 bool bound = false;
 
 // ===== PPM =====
-volatile uint16_t ppm[CHANNELS + 1];
-
 void setupPPM() {
   pinMode(PPM_PIN, OUTPUT);
-  digitalWrite(PPM_PIN, 1);
+  digitalWrite(PPM_PIN, HIGH);
 
-  // Timer1 setup
   TCCR1A = 0;
   TCCR1B = (1 << WGM12) | (1 << CS11); // CTC, prescaler 8
   OCR1A = 300;
@@ -35,14 +33,13 @@ void setupPPM() {
 
 ISR(TIMER1_COMPA_vect) {
   static uint8_t ch = 0;
-  static uint16_t pulse = 0;
 
-  digitalWrite(PPM_PIN, 0);
+  digitalWrite(PPM_PIN, LOW);
   delayMicroseconds(300);
-  digitalWrite(PPM_PIN, 1);
+  digitalWrite(PPM_PIN, HIGH);
 
   if (ch >= CHANNELS) {
-    OCR1A = 22500; // sync
+    OCR1A = 22500; // sync gap
     ch = 0;
   } else {
     OCR1A = ppm[ch] * 2;
@@ -56,8 +53,9 @@ void setupRadio() {
   radio.setAutoAck(false);
   radio.disableCRC();
   radio.setDataRate(RF24_1MBPS);
-  radio.setPALevel(RF24_PA_MAX);
+  radio.setPALevel(RF24_PA_LOW);
   radio.setAddressWidth(5);
+
   radio.openReadingPipe(0, rx_id);
   radio.startListening();
 }
@@ -75,8 +73,9 @@ void bind() {
       if (radio.available()) {
         radio.read(packet, PACKET_SIZE);
 
-        // Simple Bayang bind detection
-        if (packet[0] == 0xA4 || packet[0] == 0xA2) {
+        // Bayang bind packet detection
+        if (packet[0] == 0xA4 || packet[0] == 0xA2 || packet[0] == 0xA1) {
+
           memcpy(rx_id, &packet[1], 5);
 
           hop_table[0] = packet[6];
@@ -86,7 +85,7 @@ void bind() {
 
           bound = true;
 
-          Serial.println("BOUND!");
+          Serial.println("BOUND → STARTING DATA STREAM");
           return;
         }
       }
@@ -94,17 +93,45 @@ void bind() {
   }
 }
 
-// ===== CHANNEL DECODE =====
+// ===== DECODE =====
 void decode(uint8_t *p) {
-  channels[0] = p[4]; // Throttle
-  channels[1] = p[5]; // Yaw
-  channels[2] = p[6]; // Pitch
-  channels[3] = p[7]; // Roll
+
+  channels[0] = p[4]; // THR
+  channels[1] = p[5]; // YAW
+  channels[2] = p[6]; // PIT
+  channels[3] = p[7]; // ROL
   channels[4] = p[8]; // AUX1
   channels[5] = p[9]; // AUX2
 
   for (int i = 0; i < CHANNELS; i++) {
     ppm[i] = map(channels[i], 0, 255, 1000, 2000);
+  }
+
+  // ===== DEBUG PRINT (10Hz) =====
+  static uint32_t lastPrint = 0;
+
+  if (millis() - lastPrint > 100) {
+    lastPrint = millis();
+
+    Serial.print("THR:");
+    Serial.print(channels[0]);
+
+    Serial.print(" YAW:");
+    Serial.print(channels[1]);
+
+    Serial.print(" PIT:");
+    Serial.print(channels[2]);
+
+    Serial.print(" ROL:");
+    Serial.print(channels[3]);
+
+    Serial.print(" AUX1:");
+    Serial.print(channels[4]);
+
+    Serial.print(" AUX2:");
+    Serial.print(channels[5]);
+
+    Serial.println();
   }
 }
 
@@ -117,6 +144,7 @@ void hop() {
 // ===== SETUP =====
 void setup() {
   Serial.begin(115200);
+  Serial.println("RX START");
 
   memset(rx_id, 0xAA, 5);
 
@@ -134,8 +162,8 @@ void loop() {
   if (radio.available()) {
     radio.read(packet, PACKET_SIZE);
 
-    // basic validation
-    if (packet[0] == 0xA5 || packet[0] == 0xA6) {
+    // Accept most Bayang packet types
+    if (packet[0] >= 0xA0 && packet[0] <= 0xAF) {
       decode(packet);
       lastPacketTime = millis();
     }
@@ -143,7 +171,7 @@ void loop() {
     hop();
   }
 
-  // FAILSAFE
+  // ===== FAILSAFE =====
   if (millis() - lastPacketTime > 500) {
     for (int i = 0; i < CHANNELS; i++) {
       ppm[i] = 1500;
